@@ -88,6 +88,7 @@ func (s *AIService) StreamReviewAnalysis(c *gin.Context, tab string) error {
 	writeSSEJSON(c, "meta", gin.H{"review_count": len(reviews), "tab": normalizedTab, "source": "adk-go-structured-stream"})
 
 	var allText strings.Builder
+	var emittedText string
 	lastSnapshot := internalai.StreamSnapshot{}
 	for event, runErr := range s.analysisRunner.Run(c.Request.Context(), "merchant-user", createResp.Session.ID(), userMessage, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
@@ -95,12 +96,17 @@ func (s *AIService) StreamReviewAnalysis(c *gin.Context, tab string) error {
 		if runErr != nil {
 			return runErr
 		}
-		chunk := collectEventText(event)
-		if chunk == "" {
+		currentText := collectEventText(event)
+		if currentText == "" {
 			continue
 		}
-		allText.WriteString(chunk)
-		writeSSEJSON(c, "model_delta", gin.H{"content": chunk})
+		delta := incrementalText(emittedText, currentText)
+		if delta == "" {
+			continue
+		}
+		emittedText += delta
+		allText.WriteString(delta)
+		writeSSEJSON(c, "model_delta", gin.H{"content": delta})
 
 		snapshot := internalai.ParseStructuredStream(allText.String())
 		emitStructuredDiff(c, &lastSnapshot, snapshot)
@@ -133,18 +139,24 @@ func (s *AIService) StreamReplySuggestion(c *gin.Context, reviewID string) error
 	prompt := internalai.BuildReplyPrompt(review)
 	userMessage := genai.NewContentFromText(prompt, genai.RoleUser)
 	var fullText strings.Builder
+	var emittedText string
 	for event, runErr := range s.replyRunner.Run(c.Request.Context(), "merchant-user", createResp.Session.ID(), userMessage, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
 	}) {
 		if runErr != nil {
 			return runErr
 		}
-		chunk := collectEventText(event)
-		if chunk == "" {
+		currentText := collectEventText(event)
+		if currentText == "" {
 			continue
 		}
-		fullText.WriteString(chunk)
-		writeSSEJSON(c, "reply_delta", gin.H{"content": chunk})
+		delta := incrementalText(emittedText, currentText)
+		if delta == "" {
+			continue
+		}
+		emittedText += delta
+		fullText.WriteString(delta)
+		writeSSEJSON(c, "reply_delta", gin.H{"content": delta})
 	}
 	writeSSEJSON(c, "done", gin.H{"success": true, "full_content": strings.TrimSpace(fullText.String())})
 	return nil
@@ -182,4 +194,20 @@ func collectEventText(event *session.Event) string {
 		builder.WriteString(part.Text)
 	}
 	return builder.String()
+}
+
+func incrementalText(previous string, current string) string {
+	if current == "" {
+		return ""
+	}
+	if previous == "" {
+		return current
+	}
+	if strings.HasPrefix(current, previous) {
+		return current[len(previous):]
+	}
+	if current == previous {
+		return ""
+	}
+	return current
 }
