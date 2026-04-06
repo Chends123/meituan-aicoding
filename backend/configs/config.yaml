@@ -1,0 +1,12 @@
+app:
+  name: meituan-review-ai
+  port: 8081
+mysql:
+  host: 127.0.0.1
+  port: 13306
+  database: meituan_review_ai
+  username: root
+  password: 123456
+ai:
+  model: gemini-3-flash-preview
+  google_api_key: ${GOOGLE_API_KEY}

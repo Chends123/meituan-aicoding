@@ -1,0 +1,41 @@
+:root {
+  --mt-primary: #ffc300;
+  --mt-primary-deep: #ffb000;
+  --mt-text: #222222;
+  --mt-subtext: #666666;
+  --mt-border: #f0e3bf;
+  --mt-bg: #fffaf0;
+  --mt-panel: #fffdf7;
+  --mt-danger-bg: #fff1f0;
+  --mt-danger-border: #f7b5b2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 195, 0, 0.25), transparent 30%),
+    linear-gradient(180deg, #fff8e7 0%, #fffefb 55%, #fff8ef 100%);
+  color: var(--mt-text);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.soft-card {
+  background: var(--mt-panel);
+  border: 1px solid rgba(255, 195, 0, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(76, 57, 0, 0.08);
+}

@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: meituan-aicoding-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: meituan_review_ai
+      TZ: Asia/Shanghai
+    ports:
+      - "13306:3306"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/review.sql:/docker-entrypoint-initdb.d/review.sql:ro
+
+volumes:
+  mysql_data:
