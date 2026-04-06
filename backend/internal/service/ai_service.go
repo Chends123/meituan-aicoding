@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -84,10 +85,10 @@ func (s *AIService) StreamReviewAnalysis(c *gin.Context, tab string) error {
 
 	prompt := internalai.BuildReviewAnalysisPrompt(reviews, normalizedTab)
 	userMessage := genai.NewContentFromText(prompt, genai.RoleUser)
-	writeSSEJSON(c, "meta", gin.H{"review_count": len(reviews), "tab": normalizedTab, "source": "adk-go"})
+	writeSSEJSON(c, "meta", gin.H{"review_count": len(reviews), "tab": normalizedTab, "source": "adk-go-structured-stream"})
 
-	var partialBuilder strings.Builder
-	var finalText string
+	var allText strings.Builder
+	lastSnapshot := internalai.StreamSnapshot{}
 	for event, runErr := range s.analysisRunner.Run(c.Request.Context(), "merchant-user", createResp.Session.ID(), userMessage, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
 	}) {
@@ -98,28 +99,14 @@ func (s *AIService) StreamReviewAnalysis(c *gin.Context, tab string) error {
 		if chunk == "" {
 			continue
 		}
-		if event.Partial {
-			partialBuilder.WriteString(chunk)
-			writeSSEJSON(c, "model_delta", gin.H{"content": chunk})
-			continue
-		}
-		finalText = chunk
+		allText.WriteString(chunk)
+		writeSSEJSON(c, "model_delta", gin.H{"content": chunk})
+
+		snapshot := internalai.ParseStructuredStream(allText.String())
+		emitStructuredDiff(c, &lastSnapshot, snapshot)
+		lastSnapshot = snapshot
 	}
 
-	rawOutput := strings.TrimSpace(finalText)
-	if rawOutput == "" {
-		rawOutput = strings.TrimSpace(partialBuilder.String())
-	}
-	parsed, err := internalai.ParseAnalysisOutput(rawOutput)
-	if err != nil {
-		return fmt.Errorf("parse model analysis output failed: %w; raw=%s", err, rawOutput)
-	}
-
-	writeSSEJSON(c, "positive_keywords", gin.H{"content": parsed.PositiveKeywords})
-	writeSSEJSON(c, "negative_keywords", gin.H{"content": parsed.NegativeKeywords})
-	writeSSEJSON(c, "sentiment_score", gin.H{"content": parsed.SentimentScore})
-	writeSSEJSON(c, "suggestions", gin.H{"content": parsed.Suggestions})
-	writeSSEJSON(c, "summary", gin.H{"content": parsed.Summary})
 	writeSSEJSON(c, "done", gin.H{"success": true})
 	return nil
 }
@@ -145,8 +132,7 @@ func (s *AIService) StreamReplySuggestion(c *gin.Context, reviewID string) error
 
 	prompt := internalai.BuildReplyPrompt(review)
 	userMessage := genai.NewContentFromText(prompt, genai.RoleUser)
-	var partialBuilder strings.Builder
-	var finalText string
+	var fullText strings.Builder
 	for event, runErr := range s.replyRunner.Run(c.Request.Context(), "merchant-user", createResp.Session.ID(), userMessage, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
 	}) {
@@ -157,24 +143,31 @@ func (s *AIService) StreamReplySuggestion(c *gin.Context, reviewID string) error
 		if chunk == "" {
 			continue
 		}
-		if event.Partial {
-			partialBuilder.WriteString(chunk)
-			writeSSEJSON(c, "reply_delta", gin.H{"content": chunk})
-			continue
-		}
-		finalText = chunk
+		fullText.WriteString(chunk)
+		writeSSEJSON(c, "reply_delta", gin.H{"content": chunk})
 	}
-
-	// 优先使用流式累积内容；若模型未流式输出则用最终完整文本补发一次 delta
-	fullContent := strings.TrimSpace(partialBuilder.String())
-	if fullContent == "" {
-		fullContent = strings.TrimSpace(finalText)
-		if fullContent != "" {
-			writeSSEJSON(c, "reply_delta", gin.H{"content": fullContent})
-		}
-	}
-	writeSSEJSON(c, "done", gin.H{"success": true, "full_content": fullContent})
+	writeSSEJSON(c, "done", gin.H{"success": true, "full_content": strings.TrimSpace(fullText.String())})
 	return nil
+}
+
+func emitStructuredDiff(c *gin.Context, previous *internalai.StreamSnapshot, current internalai.StreamSnapshot) {
+	if current.Summary != "" && current.Summary != previous.Summary {
+		writeSSEJSON(c, "summary", gin.H{"content": current.Summary})
+	}
+	if len(current.PositiveKeywords) > 0 && !reflect.DeepEqual(current.PositiveKeywords, previous.PositiveKeywords) {
+		writeSSEJSON(c, "positive_keywords", gin.H{"content": current.PositiveKeywords})
+	}
+	if len(current.NegativeKeywords) > 0 && !reflect.DeepEqual(current.NegativeKeywords, previous.NegativeKeywords) {
+		writeSSEJSON(c, "negative_keywords", gin.H{"content": current.NegativeKeywords})
+	}
+	if current.SentimentScore != nil {
+		if previous.SentimentScore == nil || *current.SentimentScore != *previous.SentimentScore {
+			writeSSEJSON(c, "sentiment_score", gin.H{"content": *current.SentimentScore})
+		}
+	}
+	if len(current.Suggestions) > 0 && !reflect.DeepEqual(current.Suggestions, previous.Suggestions) {
+		writeSSEJSON(c, "suggestions", gin.H{"content": current.Suggestions})
+	}
 }
 
 func collectEventText(event *session.Event) string {

@@ -1,4 +1,4 @@
-﻿package ai
+package ai
 
 import (
 	"fmt"
@@ -10,16 +10,40 @@ import (
 func ReviewAnalysisInstruction() string {
 	return strings.TrimSpace(`你是一名美食团购评价分析助手，请严格根据用户输入的评论内容完成分析。
 
-你的输出必须满足以下要求：
-1. 只能输出 JSON，不能输出 markdown，不能输出代码块标记，不能输出额外解释。
-2. JSON 字段必须严格包含：positive_keywords、negative_keywords、sentiment_score、suggestions、summary。
-3. positive_keywords 和 negative_keywords 都必须是长度不超过 5 的字符串数组。
-4. sentiment_score 必须是 0 到 100 的整数。
-5. suggestions 必须是 2 到 3 条字符串建议。
-6. summary 必须是一句简洁中文总结。
-7. 所有内容必须使用中文。
+你必须严格按以下标签顺序输出，不能输出 JSON，不能输出 markdown，不能输出额外解释，不能更改标签名称：
+[SUMMARY]
+一句中文总结
+[/SUMMARY]
+[POSITIVE_KEYWORDS]
+- 关键词1
+- 关键词2
+- 关键词3
+- 关键词4
+- 关键词5
+[/POSITIVE_KEYWORDS]
+[NEGATIVE_KEYWORDS]
+- 关键词1
+- 关键词2
+- 关键词3
+- 关键词4
+- 关键词5
+[/NEGATIVE_KEYWORDS]
+[SENTIMENT_SCORE]
+0到100的整数
+[/SENTIMENT_SCORE]
+[SUGGESTIONS]
+- 建议1
+- 建议2
+- 建议3
+[/SUGGESTIONS]
 
-请只围绕商家经营视角做分析，不要编造输入中没有的信息。`)
+补充要求：
+1. 所有内容必须使用中文。
+2. 关键词最多 5 个，可以少于 5 个。
+3. 建议输出 2 到 3 条。
+4. summary 必须是一句简洁中文总结。
+5. sentiment_score 只能输出整数。
+6. 只围绕商家经营视角分析，不要编造输入中没有的信息。`)
 }
 
 func BuildReviewAnalysisPrompt(reviews []model.Review, tab string) string {
