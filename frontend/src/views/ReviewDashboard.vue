@@ -49,6 +49,7 @@ export default {
       trendSeries: [],
       analysis: {
         stream_text: "",
+        status_text: "",
         positive_keywords: [],
         negative_keywords: [],
         suggestions: []
@@ -63,7 +64,7 @@ export default {
   created() {
     const cache = loadAnalysisCache();
     if (cache) {
-      this.analysis = { ...this.analysis, ...cache };
+      this.analysis = { ...this.analysis, ...cache, status_text: "" };
     }
     this.loadReviews(true);
     this.loadTrend();
@@ -110,6 +111,7 @@ export default {
       this.streaming = true;
       this.analysis = {
         stream_text: "",
+        status_text: "正在建立分析连接...",
         positive_keywords: [],
         negative_keywords: [],
         suggestions: []
@@ -119,9 +121,14 @@ export default {
         const payload = JSON.parse(event.data);
         this.analysis.review_count = payload.review_count;
       });
+      source.addEventListener("status", (event) => {
+        const payload = JSON.parse(event.data || "{}");
+        this.analysis.status_text = payload.message || "正在分析评价内容...";
+      });
       source.addEventListener("model_delta", (event) => {
         const payload = JSON.parse(event.data);
         this.analysis.stream_text = `${this.analysis.stream_text || ""}${payload.content || ""}`;
+        this.analysis.status_text = "模型正在输出分析内容...";
       });
       source.addEventListener("positive_keywords", (event) => {
         this.analysis.positive_keywords = JSON.parse(event.data).content || [];
@@ -140,11 +147,28 @@ export default {
       });
       source.addEventListener("done", () => {
         this.streaming = false;
+        this.analysis.status_text = "";
         saveAnalysisCache(this.analysis);
         source.close();
       });
+      source.addEventListener("error", (event) => {
+        let message = "AI 分析失败，请稍后重试";
+        try {
+          const payload = JSON.parse(event.data || "{}");
+          if (payload.message) {
+            message = payload.message;
+          }
+        } catch (error) {
+          // ignore invalid SSE error payload
+        }
+        this.streaming = false;
+        this.analysis.status_text = "";
+        source.close();
+        this.$message.error(message);
+      });
       source.onerror = () => {
         this.streaming = false;
+        this.analysis.status_text = "";
         source.close();
         this.$message.error("AI 分析连接异常，请稍后重试");
       };

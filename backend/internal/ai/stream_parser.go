@@ -17,13 +17,24 @@ var orderedSections = []string{"SUMMARY", "POSITIVE_KEYWORDS", "NEGATIVE_KEYWORD
 
 func ParseStructuredStream(raw string) StreamSnapshot {
 	normalized := normalizeStream(raw)
-	return StreamSnapshot{
-		Summary:          sectionText(normalized, "SUMMARY"),
-		PositiveKeywords: parseBulletList(sectionText(normalized, "POSITIVE_KEYWORDS")),
-		NegativeKeywords: parseBulletList(sectionText(normalized, "NEGATIVE_KEYWORDS")),
-		SentimentScore:   parseSentimentScore(sectionText(normalized, "SENTIMENT_SCORE")),
-		Suggestions:      parseBulletList(sectionText(normalized, "SUGGESTIONS")),
+	summaryText, summaryComplete := sectionText(normalized, "SUMMARY")
+	positiveText, positiveComplete := sectionText(normalized, "POSITIVE_KEYWORDS")
+	negativeText, negativeComplete := sectionText(normalized, "NEGATIVE_KEYWORDS")
+	scoreText, scoreComplete := sectionText(normalized, "SENTIMENT_SCORE")
+	suggestionText, suggestionComplete := sectionText(normalized, "SUGGESTIONS")
+
+	snapshot := StreamSnapshot{
+		PositiveKeywords: parseBulletList(positiveText, positiveComplete),
+		NegativeKeywords: parseBulletList(negativeText, negativeComplete),
+		Suggestions:      parseBulletList(suggestionText, suggestionComplete),
 	}
+	if summaryComplete {
+		snapshot.Summary = strings.TrimSpace(summaryText)
+	}
+	if scoreComplete {
+		snapshot.SentimentScore = parseSentimentScore(scoreText)
+	}
+	return snapshot
 }
 
 func normalizeStream(raw string) string {
@@ -33,18 +44,18 @@ func normalizeStream(raw string) string {
 	return trimmed
 }
 
-func sectionText(raw string, name string) string {
+func sectionText(raw string, name string) (string, bool) {
 	startTag := "[" + name + "]"
 	endTag := "[/" + name + "]"
 	start := strings.Index(raw, startTag)
 	if start == -1 {
-		return ""
+		return "", false
 	}
 	start += len(startTag)
 	rest := raw[start:]
 	end := strings.Index(rest, endTag)
 	if end != -1 {
-		return strings.TrimSpace(rest[:end])
+		return strings.TrimSpace(rest[:end]), true
 	}
 	next := len(rest)
 	for _, candidate := range orderedSections {
@@ -56,21 +67,30 @@ func sectionText(raw string, name string) string {
 			next = idx
 		}
 	}
-	return strings.TrimSpace(rest[:next])
+	if next < len(rest) {
+		return strings.TrimSpace(rest[:next]), true
+	}
+	return strings.TrimSpace(rest[:next]), false
 }
 
-func parseBulletList(raw string) []string {
+func parseBulletList(raw string, complete bool) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	lines := strings.Split(raw, "\n")
+	if !complete && len(lines) > 0 {
+		lastLine := strings.TrimSpace(lines[len(lines)-1])
+		if lastLine != "" {
+			lines = lines[:len(lines)-1]
+		}
+	}
 	result := make([]string, 0, len(lines))
 	for _, line := range lines {
 		cleaned := strings.TrimSpace(line)
 		cleaned = strings.TrimPrefix(cleaned, "- ")
 		cleaned = strings.TrimPrefix(cleaned, "-")
 		cleaned = strings.TrimSpace(cleaned)
-		if cleaned == "" {
+		if cleaned == "" || strings.Contains(cleaned, "[") {
 			continue
 		}
 		result = append(result, cleaned)
@@ -85,7 +105,7 @@ func parseSentimentScore(raw string) *int {
 	}
 	for _, line := range strings.Split(cleaned, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" || strings.Contains(line, "[") {
 			continue
 		}
 		value, err := strconv.Atoi(line)

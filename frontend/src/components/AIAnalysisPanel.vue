@@ -10,31 +10,34 @@
 
     <el-alert
       v-if="streaming"
-      title="分析进行中，结果将通过 SSE 逐步返回"
+      :title="analysis.status_text || '分析进行中，结果将通过 SSE 逐步返回'"
       type="warning"
       :closable="false"
       show-icon
     />
 
     <div v-if="streaming || analysis.stream_text" class="stream-box">
-      <div class="stream-box__title">AI 实时输出</div>
-      <pre class="stream-box__content">{{ analysis.stream_text || "正在等待模型返回内容..." }}</pre>
+      <div class="stream-box__title">
+        <span>AI 实时输出</span>
+        <span v-if="streaming" class="stream-box__status">{{ analysis.status_text || '模型正在输出分析内容...' }}</span>
+      </div>
+      <pre ref="streamBox" class="stream-box__content">{{ analysis.stream_text || analysis.status_text || '正在等待模型返回内容...' }}<span v-if="streaming" class="stream-caret">|</span></pre>
     </div>
 
     <el-collapse value="summary">
       <el-collapse-item title="整体总结" name="summary">
-        <div>{{ analysis.summary || "等待分析结果..." }}</div>
+        <div>{{ analysis.summary || '等待分析结果...' }}</div>
       </el-collapse-item>
     </el-collapse>
 
     <div class="metric-row">
       <div class="metric-card">
         <span>综合情感评分</span>
-        <strong>{{ analysis.sentiment_score || "--" }}</strong>
+        <strong>{{ analysis.sentiment_score || '--' }}</strong>
       </div>
       <div class="metric-card">
         <span>覆盖评价数</span>
-        <strong>{{ analysis.review_count || "--" }}</strong>
+        <strong>{{ analysis.review_count || '--' }}</strong>
       </div>
     </div>
 
@@ -81,6 +84,12 @@ export default {
       type: Boolean,
       default: false
     }
+  },
+  updated() {
+    const target = this.$refs.streamBox;
+    if (target) {
+      target.scrollTop = target.scrollHeight;
+    }
   }
 };
 </script>
@@ -116,10 +125,19 @@ export default {
 }
 
 .stream-box__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 14px;
   font-weight: 600;
   color: var(--mt-primary-deep);
   margin-bottom: 8px;
+}
+
+.stream-box__status {
+  font-size: 12px;
+  color: var(--mt-subtext);
 }
 
 .stream-box__content {
@@ -131,6 +149,12 @@ export default {
   font-family: Consolas, "Courier New", monospace;
   max-height: 220px;
   overflow: auto;
+}
+
+.stream-caret {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
 }
 
 .metric-row {
@@ -187,5 +211,16 @@ export default {
 ::v-deep .el-collapse-item__wrap {
   border-color: var(--mt-border);
   background: transparent;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 </style>

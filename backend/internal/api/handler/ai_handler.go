@@ -24,9 +24,7 @@ func NewAIHandler(db *gorm.DB, cfg config.AIConfig) (*AIHandler, error) {
 }
 
 func (h *AIHandler) AnalyzeReviewsStream(c *gin.Context) {
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
+	prepareSSEHeaders(c)
 
 	if err := h.aiService.StreamReviewAnalysis(c, c.Query("tab")); err != nil {
 		c.SSEvent("error", gin.H{"message": err.Error()})
@@ -41,12 +39,20 @@ func (h *AIHandler) ReplySuggestionStream(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
+	prepareSSEHeaders(c)
 
 	if err := h.aiService.StreamReplySuggestion(c, idStr); err != nil {
 		c.SSEvent("error", gin.H{"message": err.Error()})
 		c.Writer.Flush()
 	}
+}
+
+func prepareSSEHeaders(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Writer.WriteHeaderNow()
+	c.Writer.Flush()
 }

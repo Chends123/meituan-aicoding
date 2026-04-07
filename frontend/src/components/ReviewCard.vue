@@ -18,8 +18,11 @@
     </div>
 
     <div v-if="replyStreaming || replyText" class="reply-box">
-      <div class="reply-box__title">AI 商家回复建议</div>
-      <div class="reply-box__content">{{ replyText || "正在生成回复话术..." }}</div>
+      <div class="reply-box__title">
+        <span>AI 商家回复建议</span>
+        <span v-if="replyStreaming" class="reply-box__status">{{ replyStatusText || '模型正在输出回复建议...' }}</span>
+      </div>
+      <div ref="replyBox" class="reply-box__content">{{ replyText || replyStatusText || '正在生成回复话术...' }}<span v-if="replyStreaming" class="stream-caret">|</span></div>
     </div>
   </div>
 </template>
@@ -41,11 +44,18 @@ export default {
     return {
       replyStreaming: false,
       replyText: "",
+      replyStatusText: "",
       replySource: null
     };
   },
   beforeDestroy() {
     this.closeReplySource();
+  },
+  updated() {
+    const target = this.$refs.replyBox;
+    if (target) {
+      target.scrollTop = target.scrollHeight;
+    }
   },
   methods: {
     formatDate(value) {
@@ -58,13 +68,20 @@ export default {
       this.closeReplySource();
       this.replyStreaming = true;
       this.replyText = "";
+      this.replyStatusText = "正在建立回复连接...";
 
       const source = createEventSource(buildReplyStreamURL(this.review.id));
       this.replySource = source;
 
+      source.addEventListener("status", (event) => {
+        const payload = JSON.parse(event.data || "{}");
+        this.replyStatusText = payload.message || "正在生成回复建议...";
+      });
+
       source.addEventListener("reply_delta", (event) => {
         const payload = JSON.parse(event.data);
         this.replyText = `${this.replyText}${payload.content || ""}`;
+        this.replyStatusText = "模型正在输出回复内容...";
       });
 
       source.addEventListener("done", (event) => {
@@ -72,6 +89,7 @@ export default {
         if (!this.replyText && payload.full_content) {
           this.replyText = payload.full_content;
         }
+        this.replyStatusText = "";
         this.replyStreaming = false;
         this.closeReplySource();
       });
@@ -86,6 +104,7 @@ export default {
         } catch (error) {
           // ignore invalid SSE error payload
         }
+        this.replyStatusText = "";
         this.replyStreaming = false;
         this.closeReplySource();
         this.$message.error(message);
@@ -93,6 +112,7 @@ export default {
 
       source.onerror = () => {
         if (this.replyStreaming) {
+          this.replyStatusText = "";
           this.replyStreaming = false;
           this.closeReplySource();
           this.$message.error("回复建议连接异常，请稍后重试");
@@ -153,10 +173,19 @@ export default {
 }
 
 .reply-box__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 13px;
   font-weight: 600;
   color: #f56c6c;
   margin-bottom: 8px;
+}
+
+.reply-box__status {
+  font-size: 12px;
+  color: var(--mt-subtext);
 }
 
 .reply-box__content {
@@ -164,5 +193,24 @@ export default {
   color: var(--mt-text);
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.stream-caret {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 </style>
